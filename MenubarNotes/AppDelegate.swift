@@ -39,6 +39,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         registerHotKey()
     }
 
+    /// Holds the quit open long enough to finish an outstanding push. Without
+    /// this the PATCH is fire-and-forget: closing the popover and immediately
+    /// quitting kills the request mid-flight, and the edit sits unsynced until
+    /// the next open.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        store.flush()
+        guard engine.hasPendingPush else { return .terminateNow }
+
+        var replied = false
+        let reply = {
+            guard !replied else { return }
+            replied = true
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+
+        Task {
+            await engine.pushOnClose()
+            reply()
+        }
+
+        // A hung or very slow server must not make the app un-quittable, so the
+        // wait is capped well below URLSession's own 10s timeout.
+        Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            reply()
+        }
+
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         store.flush()
         unregisterHotKey()

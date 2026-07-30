@@ -83,6 +83,12 @@ final class SyncEngine: ObservableObject {
 
     var needsPasscode: Bool { config.isConfigured && !client.hasSession }
 
+    /// True when local text hasn't reached the server yet, so quitting would
+    /// lose it until the next open.
+    var hasPendingPush: Bool {
+        config.isConfigured && client.hasSession && store.text != state.lastSyncedBody
+    }
+
     // MARK: - Sync
 
     func pullOnOpen() async {
