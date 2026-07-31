@@ -4,6 +4,11 @@ struct NoteView: View {
     @ObservedObject var store: NoteStore
     @ObservedObject var engine: SyncEngine
     @FocusState private var editorFocused: Bool
+
+    /// Settings replace the note in place rather than arriving as a sheet: a
+    /// popover window can't host one properly, and a transient popover can be
+    /// dismissed out from under it, leaving an invisible modal that swallows
+    /// every click.
     @State private var showingSettings = false
 
     /// Set by the delegate each time the popover opens, so the editor can
@@ -11,6 +16,34 @@ struct NoteView: View {
     let focusToken: Int
 
     var body: some View {
+        Group {
+            if showingSettings {
+                SettingsView(engine: engine) { closeSettings() }
+                    // Pinned to the top; the form is shorter than the popover.
+                    .frame(maxHeight: .infinity, alignment: .top)
+            } else {
+                notePage
+            }
+        }
+        .frame(width: 340, height: 420)
+        .onAppear { editorFocused = true }
+        .onChange(of: focusToken) {
+            // This state outlives a popover dismissal, so a close while settings
+            // were open would otherwise reopen straight back into them.
+            showingSettings = false
+            // Focus can't be taken while the popover is still animating in.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                editorFocused = true
+            }
+        }
+    }
+
+    private func closeSettings() {
+        showingSettings = false
+        editorFocused = true
+    }
+
+    private var notePage: some View {
         VStack(spacing: 0) {
             TextEditor(text: $store.text)
                 .font(.system(size: 13))
@@ -64,17 +97,6 @@ struct NoteView: View {
             .font(.caption)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
-        }
-        .frame(width: 340, height: 420)
-        .onAppear { editorFocused = true }
-        .onChange(of: focusToken) {
-            // Focus can't be taken while the popover is still animating in.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                editorFocused = true
-            }
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView(engine: engine, isPresented: $showingSettings)
         }
     }
 

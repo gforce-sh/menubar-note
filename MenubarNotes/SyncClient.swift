@@ -45,6 +45,12 @@ final class SyncClient {
 
     var hasSession: Bool { SessionStore.load() != nil }
 
+    /// Local only: the server has no logout route, so this just drops our copy
+    /// of the cookie. The session stays valid server-side until it expires.
+    func signOut() {
+        SessionStore.clear()
+    }
+
     // MARK: - Requests
 
     private func url(_ path: String) throws -> URL {

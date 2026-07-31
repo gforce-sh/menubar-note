@@ -4,7 +4,9 @@ enum SyncStatus: Equatable {
     case notConfigured
     case needsAuth
     case syncing
-    case synced(Date)
+    /// Carries when the sync happened, or nil if we know we're in sync but have
+    /// no record of when — a state file written before the timestamp existed.
+    case synced(Date?)
     case pendingPush
     case conflict
     case offline
@@ -32,8 +34,16 @@ enum SyncStatus: Equatable {
         case .needsAuth: return "Sign in to sync"
         case .syncing: return "Syncing…"
         case .synced(let date):
+            guard let date else { return "Synced" }
             let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
+            // A bare "HH:mm" on a sync from days ago reads as minutes ago, so
+            // anything outside today gets a date too.
+            if Calendar.current.isDateInToday(date) {
+                formatter.dateFormat = "HH:mm"
+            } else {
+                formatter.dateStyle = .short
+                formatter.timeStyle = .short
+            }
             return "Synced \(formatter.string(from: date))"
         case .pendingPush: return "Unsynced changes"
         case .conflict: return "Conflict — both versions kept"
@@ -78,10 +88,22 @@ final class SyncEngine: ObservableObject {
     private func refreshIdleStatus() {
         guard config.isConfigured else { status = .notConfigured; return }
         guard client.hasSession else { status = .needsAuth; return }
-        status = store.text == state.lastSyncedBody ? .synced(Date()) : .pendingPush
+        // The persisted timestamp, not `Date()`: this runs on launch and on every
+        // config edit, neither of which is a sync.
+        status = store.text == state.lastSyncedBody ? .synced(state.lastSyncedAt) : .pendingPush
     }
 
     var needsPasscode: Bool { config.isConfigured && !client.hasSession }
+
+    /// Whether we hold a session cookie. Not itself `@Published` — it's read
+    /// during `body`, and every transition in or out of a session also moves
+    /// `status`, which is what triggers the re-render.
+    var isSignedIn: Bool { client.hasSession }
+
+    func signOut() {
+        client.signOut()
+        refreshIdleStatus()
+    }
 
     /// True when local text hasn't reached the server yet, so quitting would
     /// lose it until the next open.
@@ -108,12 +130,12 @@ final class SyncEngine: ObservableObject {
                 // treated as the truth; whatever was in the local note is replaced.
                 store.text = remote.body
                 commit(body: remote.body, updatedAt: remote.updatedAt)
-                status = .synced(Date())
+                status = .synced(state.lastSyncedAt)
             } else if !localDirty {
                 // Local is exactly what we last pushed, so remote always wins.
                 store.text = remote.body
                 commit(body: remote.body, updatedAt: remote.updatedAt)
-                status = .synced(Date())
+                status = .synced(state.lastSyncedAt)
             } else if !remoteMoved {
                 // Only we changed; the close handler will push it.
                 status = .pendingPush
@@ -141,7 +163,7 @@ final class SyncEngine: ObservableObject {
         do {
             let remote = try await client.pushBody(store.text)
             commit(body: remote.body, updatedAt: remote.updatedAt)
-            status = .synced(Date())
+            status = .synced(state.lastSyncedAt)
         } catch {
             status = describe(error)
         }
@@ -161,7 +183,7 @@ final class SyncEngine: ObservableObject {
     }
 
     private func commit(body: String, updatedAt: Int) {
-        state = SyncState(lastSyncedBody: body, lastSyncedUpdatedAt: updatedAt)
+        state = SyncState(lastSyncedBody: body, lastSyncedUpdatedAt: updatedAt, lastSyncedAt: Date())
         state.save()
     }
 

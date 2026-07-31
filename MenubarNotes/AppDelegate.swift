@@ -19,9 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Belt and braces alongside LSUIElement: no Dock tile, no ⌘-Tab entry.
         NSApp.setActivationPolicy(.accessory)
 
-        hostingController = NSHostingController(
-            rootView: NoteView(store: store, engine: engine, focusToken: focusToken)
-        )
+        hostingController = NSHostingController(rootView: makeNoteView())
         popover.contentViewController = hostingController
         popover.behavior = .transient
         popover.animates = true
@@ -90,7 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showContextMenu() {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open Notes", action: #selector(togglePopover), keyEquivalent: "")
+        // Deferred, not `togglePopover` directly: menu items fire while the menu
+        // is still tracking, and showing the popover inside that nested run loop
+        // leaves it on screen but not receiving events.
+        menu.addItem(withTitle: "Open Notes", action: #selector(togglePopoverDeferred), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit MenubarNotes", action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -102,6 +103,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem.menu = nil
     }
 
+    @objc private func togglePopoverDeferred() {
+        DispatchQueue.main.async { [weak self] in self?.togglePopover() }
+    }
+
     @objc private func togglePopover() {
         if popover.isShown {
             closePopover()
@@ -110,11 +115,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
+    private func makeNoteView() -> NoteView {
+        NoteView(store: store, engine: engine, focusToken: focusToken)
+    }
+
     private func openPopover() {
         guard let button = statusItem.button else { return }
 
         focusToken += 1
-        hostingController.rootView = NoteView(store: store, engine: engine, focusToken: focusToken)
+        hostingController.rootView = makeNoteView()
 
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // Without this the popover appears but keyboard input goes elsewhere,
@@ -122,6 +131,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate(ignoringOtherApps: true)
         popover.contentViewController?.view.window?.makeKey()
 
+        // Any monitor from a previous show must go first: re-entering this method
+        // without a close in between would otherwise stack them and leak.
+        removeEscapeMonitor()
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == UInt16(kVK_Escape) else { return event }
             self?.closePopover()
@@ -143,10 +155,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         store.flush()
         Task { await engine.pushOnClose() }
-        if let monitor = escapeMonitor {
-            NSEvent.removeMonitor(monitor)
-            escapeMonitor = nil
-        }
+        removeEscapeMonitor()
+    }
+
+    private func removeEscapeMonitor() {
+        guard let monitor = escapeMonitor else { return }
+        NSEvent.removeMonitor(monitor)
+        escapeMonitor = nil
     }
 
     @objc private func quit() {

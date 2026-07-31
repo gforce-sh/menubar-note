@@ -66,6 +66,10 @@ enum SessionStore {
 struct SyncState: Codable, Equatable {
     var lastSyncedBody: String = ""
     var lastSyncedUpdatedAt: Int = 0
+    /// When we last completed a sync, as opposed to `lastSyncedUpdatedAt`, which
+    /// is the server's own clock. Optional so state files written before this
+    /// field existed still decode.
+    var lastSyncedAt: Date?
 
     static func load() -> SyncState {
         guard let data = try? Data(contentsOf: AppPaths.syncState),

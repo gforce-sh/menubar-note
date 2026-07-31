@@ -2,7 +2,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var engine: SyncEngine
-    @Binding var isPresented: Bool
+    /// Closes the settings window. Owned by the delegate, since AppKit windows
+    /// aren't driven by SwiftUI presentation state.
+    let onDone: () -> Void
 
     @State private var serverURL: String = ""
     @State private var noteID: String = ""
@@ -29,6 +31,21 @@ struct SettingsView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(engine.isSignedIn ? Color.green : Color.secondary)
+                        .frame(width: 7, height: 7)
+                    Text(engine.isSignedIn ? "Signed in" : "Not signed in")
+                        .font(.caption)
+                        .foregroundStyle(engine.isSignedIn ? .primary : .secondary)
+                    Spacer()
+                    if engine.isSignedIn {
+                        Button("Sign out") { engine.signOut() }
+                            .buttonStyle(.link)
+                            .font(.caption)
+                    }
+                }
+
                 Text("Passcode").font(.caption).foregroundStyle(.secondary)
                 HStack {
                     SecureField("4 digits", text: $passcode)
@@ -60,7 +77,7 @@ struct SettingsView: View {
                 Spacer()
                 Button("Done") {
                     save()
-                    isPresented = false
+                    onDone()
                 }
                 .keyboardShortcut(.defaultAction)
             }
@@ -71,6 +88,10 @@ struct SettingsView: View {
             serverURL = engine.config.serverURL
             noteID = engine.config.noteID
         }
+        // The window can also be closed with ⌘W or the red button, which never
+        // reaches "Done", so persist here too. `save` is idempotent — the config
+        // setter ignores a write that changes nothing.
+        .onDisappear { save() }
     }
 
     private func save() {
