@@ -29,8 +29,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Notes")
-            button.image?.isTemplate = true
+            let icon = NSImage(named: "MenubarIcon")
+            icon?.size = NSSize(width: 18, height: 18)
+            // Template rendering lets AppKit invert the glyph for light/dark
+            // menu bars and highlight it on click, so no per-appearance artwork.
+            icon?.isTemplate = true
+            button.image = icon
             button.action = #selector(statusItemClicked(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])

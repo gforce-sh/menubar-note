@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# Xcode per-user state: window layout, breakpoints, scheme selection.
+# Machine-specific and churns on every open, so never shared.
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Build products
+build/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# CocoaPods / Carthage, if ever added
+Pods/
+Carthage/Build/

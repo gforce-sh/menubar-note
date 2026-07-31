@@ -16,6 +16,7 @@
 		5A1B2C3D4E5F607182900037 /* ConflictMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1B2C3D4E5F607182900029 /* ConflictMerge.swift */; };
 		5A1B2C3D4E5F607182900038 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1B2C3D4E5F60718290002A /* SyncEngine.swift */; };
 		5A1B2C3D4E5F607182900039 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1B2C3D4E5F60718290002B /* SettingsView.swift */; };
+		5A1B2C3D4E5F60718290003A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5A1B2C3D4E5F60718290002C /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +32,7 @@
 		5A1B2C3D4E5F607182900029 /* ConflictMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictMerge.swift; sourceTree = "<group>"; };
 		5A1B2C3D4E5F60718290002A /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		5A1B2C3D4E5F60718290002B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		5A1B2C3D4E5F60718290002C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,6 +66,7 @@
 				5A1B2C3D4E5F607182900029 /* ConflictMerge.swift */,
 				5A1B2C3D4E5F60718290002A /* SyncEngine.swift */,
 				5A1B2C3D4E5F60718290002B /* SettingsView.swift */,
+				5A1B2C3D4E5F60718290002C /* Assets.xcassets */,
 				5A1B2C3D4E5F607182900025 /* Info.plist */,
 				5A1B2C3D4E5F607182900026 /* MenubarNotes.entitlements */,
 			);
@@ -136,6 +139,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A1B2C3D4E5F60718290003A /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -203,14 +207,17 @@
 		5A1B2C3D4E5F607182900007 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = MenubarNotes/MenubarNotes.entitlements;
 				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MenubarNotes/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -226,14 +233,17 @@
 		5A1B2C3D4E5F607182900008 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = MenubarNotes/MenubarNotes.entitlements;
 				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MenubarNotes/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
