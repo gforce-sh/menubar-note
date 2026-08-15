@@ -18,9 +18,9 @@ struct NoteView: View {
     var body: some View {
         Group {
             if showingSettings {
+                // Fills the popover rather than being pinned to the top: the
+                // form now scrolls, so it needs to know how much height it has.
                 SettingsView(engine: engine) { closeSettings() }
-                    // Pinned to the top; the form is shorter than the popover.
-                    .frame(maxHeight: .infinity, alignment: .top)
             } else {
                 notePage
             }
@@ -45,16 +45,17 @@ struct NoteView: View {
 
     private var notePage: some View {
         VStack(spacing: 0) {
-            TextEditor(text: $store.text)
-                .font(.system(size: 13))
-                .scrollContentBackground(.hidden)
-                // TextEditor carries a ~5pt internal inset on the leading edge only,
-                // so trim the leading pad to keep the text visually centred.
-                .padding(.top, 12)
-                .padding(.leading, 8)
-                .padding(.trailing, 12)
-                .padding(.bottom, 4)
-                .focused($editorFocused)
+            InsetTextEditor(
+                text: $store.text,
+                font: .systemFont(ofSize: 13),
+                horizontalInset: 16,
+                isFocused: Binding(
+                    get: { editorFocused },
+                    set: { editorFocused = $0 }
+                )
+            )
+            .padding(.top, 12)
+            .padding(.bottom, 4)
 
             Divider()
 

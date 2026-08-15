@@ -21,7 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         hostingController = NSHostingController(rootView: makeNoteView())
         popover.contentViewController = hostingController
-        popover.behavior = .transient
+        // .applicationDefined means AppKit never auto-dismisses on an outside
+        // click or app deactivation — closing is entirely up to us, via the
+        // status item click, the hotkey, or Escape.
+        popover.behavior = .applicationDefined
         popover.animates = true
         popover.delegate = self
 
@@ -146,9 +149,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func closePopover() {
-        // Teardown lives in `popoverDidClose` rather than here: a transient
-        // popover dismissed by clicking outside never routes through this
-        // method, and that path must still flush and push.
+        // Teardown lives in the `NSPopoverDelegate` callback rather than here
+        // so it still runs if the popover is ever dismissed by some path other
+        // than this method.
         popover.performClose(nil)
     }
 
