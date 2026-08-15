@@ -53,10 +53,23 @@ final class SyncClient {
 
     // MARK: - Requests
 
-    private func url(_ path: String) throws -> URL {
-        guard let base = URL(string: config.serverURL),
-              let url = URL(string: "/api/v1" + path, relativeTo: base)
-        else { throw SyncError.malformedResponse }
+    /// Resolves a configured route template against `serverURL`.
+    ///
+    /// Components are appended one at a time rather than joined into a single
+    /// root-relative string. That matters twice over: appending preserves any
+    /// path already in `serverURL` (a root-relative reference would replace it,
+    /// silently discarding a server mounted under a prefix), and it lets
+    /// Foundation percent-encode each segment. `{noteID}` is substituted inside
+    /// each component, not matched against whole ones, so templates like
+    /// `/n/{noteID}.json` work.
+    private func url(_ template: String) throws -> URL {
+        guard let base = URL(string: config.serverURL) else { throw SyncError.malformedResponse }
+        var url = base
+        for component in AppConfig.pathComponents(template) {
+            url.appendPathComponent(
+                component.replacingOccurrences(of: AppConfig.noteIDPlaceholder, with: config.noteID)
+            )
+        }
         return url
     }
 
@@ -95,7 +108,7 @@ final class SyncClient {
     /// keeps a global counter and locks *every* user out for an hour after five
     /// failures.
     func login(passcode: String) async throws {
-        let request = try request("POST", "/login", body: ["passcode": passcode])
+        let request = try request("POST", config.loginPath, body: ["passcode": passcode])
         let (_, http) = try await send(request)
 
         switch http.statusCode {
@@ -113,7 +126,7 @@ final class SyncClient {
     }
 
     func fetchNote() async throws -> RemoteNote {
-        let request = try request("GET", "/notes/\(config.noteID)")
+        let request = try request("GET", config.notePath)
         let (data, http) = try await send(request)
 
         switch http.statusCode {
@@ -132,7 +145,7 @@ final class SyncClient {
 
     @discardableResult
     func pushBody(_ body: String) async throws -> RemoteNote {
-        let request = try request("PATCH", "/notes/\(config.noteID)", body: ["body": body])
+        let request = try request("PATCH", config.notePath, body: ["body": body])
         let (data, http) = try await send(request)
 
         switch http.statusCode {

@@ -1,7 +1,12 @@
+import Combine
 import Foundation
 
 enum SyncStatus: Equatable {
     case notConfigured
+    /// config.json exists but couldn't be used, so the app is running on defaults
+    /// rather than on what the file says. Distinct from `notConfigured`, which is
+    /// the honest state of a fresh install.
+    case configInvalid(String)
     case needsAuth
     case syncing
     /// Carries when the sync happened, or nil if we know we're in sync but have
@@ -22,7 +27,7 @@ enum SyncStatus: Equatable {
     var light: Light {
         switch self {
         case .synced: return .green
-        case .offline, .pendingPush, .failed, .needsAuth: return .red
+        case .offline, .pendingPush, .failed, .needsAuth, .configInvalid: return .red
         case .conflict: return .amber
         case .notConfigured, .syncing: return .grey
         }
@@ -31,6 +36,7 @@ enum SyncStatus: Equatable {
     var label: String {
         switch self {
         case .notConfigured: return "Local only"
+        case .configInvalid(let reason): return "config.json — \(reason)"
         case .needsAuth: return "Sign in to sync"
         case .syncing: return "Syncing…"
         case .synced(let date):
@@ -53,7 +59,8 @@ enum SyncStatus: Equatable {
     }
 }
 
-/// Pull on popover open, push on popover close.
+/// Pull on popover open, push on popover close, and push again whenever typing
+/// goes idle for `config.autoSyncSeconds`.
 ///
 /// The popover is the only way to edit locally, so local text cannot drift while
 /// it's closed. That means at open time local normally equals what we last
@@ -63,29 +70,58 @@ enum SyncStatus: Equatable {
 @MainActor
 final class SyncEngine: ObservableObject {
     @Published private(set) var status: SyncStatus = .notConfigured
-    @Published var config: AppConfig {
-        didSet {
-            guard config != oldValue else { return }
-            config.save()
-            client.update(config: config)
-            refreshIdleStatus()
-        }
+    /// Read-only from outside; `apply(_:)` is the only way in, so an invalid
+    /// config can never be held in memory or reach disk.
+    @Published private(set) var config: AppConfig
+
+    /// Validates, then persists. Returns why the config was rejected, or nil if
+    /// it was accepted — a no-op change counts as accepted.
+    ///
+    /// `AppConfig.validate()` is the same check `load()` runs, which is the point:
+    /// the settings pane cannot write a file that the next launch would refuse.
+    @discardableResult
+    func apply(_ newConfig: AppConfig) -> String? {
+        if let reason = newConfig.validate() { return reason }
+        guard newConfig != config else { return nil }
+
+        config = newConfig
+        // A file we wrote ourselves is valid by construction, so a successful
+        // write is what clears the complaint about the old one. A failed write
+        // leaves it standing, because the bad file is still there.
+        if config.save() { configError = nil }
+        client.update(config: config)
+        refreshIdleStatus()
+        return nil
     }
 
     private let store: NoteStore
     private let client: SyncClient
     private var state: SyncState
 
+    private var editObserver: AnyCancellable?
+    private var autoSyncTask: Task<Void, Never>?
+    private var pushTask: Task<Void, Never>?
+
+    /// Why config.json was rejected, if it was. Sticky rather than a one-off
+    /// alert: the file is still broken on every subsequent status recomputation,
+    /// and it stays broken until something writes a valid one over it.
+    private var configError: String?
+
     init(store: NoteStore) {
         let loaded = AppConfig.load()
         self.store = store
-        self.config = loaded
+        self.config = loaded.config
+        self.configError = loaded.failureReason
         self.state = SyncState.load()
-        self.client = SyncClient(config: loaded)
+        self.client = SyncClient(config: loaded.config)
         refreshIdleStatus()
+        observeEdits()
     }
 
     private func refreshIdleStatus() {
+        // Ahead of `notConfigured`: running on defaults because the file was
+        // rejected must not look like a fresh install that has none.
+        if let configError { status = .configInvalid(configError); return }
         guard config.isConfigured else { status = .notConfigured; return }
         guard client.hasSession else { status = .needsAuth; return }
         // The persisted timestamp, not `Date()`: this runs on launch and on every
@@ -111,11 +147,52 @@ final class SyncEngine: ObservableObject {
         config.isConfigured && client.hasSession && store.text != state.lastSyncedBody
     }
 
+    // MARK: - Autosync
+
+    /// `@Published` fires in `willSet`, so the hop onto the main actor is what
+    /// makes `store.text` read as the value the user just typed rather than the
+    /// one before it.
+    private func observeEdits() {
+        editObserver = store.$text
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.textDidChange() }
+            }
+    }
+
+    private func textDidChange() {
+        autoSyncTask?.cancel()
+
+        guard config.isConfigured, client.hasSession else { return }
+        guard store.text != state.lastSyncedBody else { return }
+
+        // Say so immediately: leaving a stale "Synced 14:02" on screen for the
+        // whole debounce window is the one moment the light is actively wrong.
+        // Only a clean sync is overwritten — a conflict notice or a failure is
+        // still true after a keystroke, and this also runs for the text a pull
+        // just adopted, which must not stamp over the status the pull set.
+        if case .synced = status { status = .pendingPush }
+
+        let delay = config.autoSyncSeconds
+        guard delay > 0 else { return }
+
+        autoSyncTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            // Re-read rather than trusting the captured delay: autosync may have
+            // been switched off in settings while this one was waiting.
+            guard let self, self.config.autoSyncSeconds > 0 else { return }
+            await self.push()
+        }
+    }
+
     // MARK: - Sync
 
     func pullOnOpen() async {
-        guard config.isConfigured else { status = .notConfigured; return }
-        guard client.hasSession else { status = .needsAuth; return }
+        // Deferred to `refreshIdleStatus` rather than assigning `.notConfigured`
+        // here, so opening the popover can't overwrite the config.json complaint
+        // with a blander reason for the same silence.
+        guard config.isConfigured, client.hasSession else { refreshIdleStatus(); return }
 
         status = .syncing
         do {
@@ -156,6 +233,26 @@ final class SyncEngine: ObservableObject {
     }
 
     func pushOnClose() async {
+        // A debounced push about to fire would duplicate this one.
+        autoSyncTask?.cancel()
+        await push()
+    }
+
+    /// Waits for any push already in flight before starting its own. Autosync,
+    /// popover close and quit can all land within a moment of each other, and two
+    /// overlapping PATCHes race on `commit`: the loser writes back a stale
+    /// `updatedAt`, which the next open then reads as a remote edit and merges.
+    private func push() async {
+        let inFlight = pushTask
+        let task = Task { @MainActor [weak self] in
+            await inFlight?.value
+            await self?.performPush()
+        }
+        pushTask = task
+        await task.value
+    }
+
+    private func performPush() async {
         guard config.isConfigured, client.hasSession else { return }
         guard store.text != state.lastSyncedBody else { return }
 
