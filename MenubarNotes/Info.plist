@@ -1,6 +1,6 @@
-<?xml version="1.1" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.1//EN" "http://www.apple.com/DTDs/PropertyList-1.1.dtd">
-<plist version="1.1">
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
@@ -15,7 +15,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1</string>
+	<string>1.2</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>CFBundleIconName</key>
@@ -26,9 +26,6 @@
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- Permits cleartext http to localhost and .local only, for testing
-		     against a locally-run quick-note server. TLS is still enforced
-		     for every other host. -->
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
