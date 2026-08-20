@@ -2,6 +2,13 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 
+/// Whether the popover ignores outside clicks. An `ObservableObject` so
+/// `NoteView` re-renders the pin button when `AppDelegate` toggles it.
+@MainActor
+final class PinState: ObservableObject {
+    @Published var isPinned = false
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let store = NoteStore()
@@ -13,7 +20,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyHandler: EventHandlerRef?
     private var escapeMonitor: Any?
+    private var outsideClickLocalMonitor: Any?
+    private var outsideClickGlobalMonitor: Any?
     private var focusToken = 0
+
+    /// Whether the popover stays open when the user clicks outside it. Lives
+    /// here rather than as `@State` in `NoteView` so it survives that view
+    /// being torn down and rebuilt on every open; it resets on relaunch rather
+    /// than being written to disk. An `ObservableObject`, not a plain `var`,
+    /// because SwiftUI only re-renders `NoteView` when something it observes
+    /// changes — a manual `Binding` over a plain property updates the value
+    /// but never triggers a redraw.
+    private let pinState = PinState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Belt and braces alongside LSUIElement: no Dock tile, no ⌘-Tab entry.
@@ -119,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func makeNoteView() -> NoteView {
-        NoteView(store: store, engine: engine, focusToken: focusToken)
+        NoteView(store: store, engine: engine, focusToken: focusToken, pinState: pinState)
     }
 
     private func openPopover() {
@@ -143,6 +161,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return nil
         }
 
+        removeOutsideClickMonitors()
+        // Local: catches clicks elsewhere in this app. The popover's own window
+        // and the status item's button are both excluded so that clicking inside
+        // the popover, or clicking the menu bar icon to toggle it, isn't treated
+        // as an "outside" click — the latter is already handled by
+        // `statusItemClicked`, and closing it here too would just reopen it.
+        outsideClickLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, self.popover.isShown, !self.pinState.isPinned else { return event }
+            let popoverWindow = self.popover.contentViewController?.view.window
+            let statusWindow = self.statusItem.button?.window
+            if event.window != popoverWindow, event.window != statusWindow {
+                self.closePopover()
+            }
+            return event
+        }
+        // Global: catches clicks in other applications, which the local monitor
+        // above never sees.
+        outsideClickGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            guard let self, self.popover.isShown, !self.pinState.isPinned else { return }
+            self.closePopover()
+        }
+
         // Pull after the popover is on screen so the fetch never delays it
         // appearing; on failure the local text simply stays as it was.
         Task { await engine.pullOnOpen() }
@@ -159,12 +199,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.flush()
         Task { await engine.pushOnClose() }
         removeEscapeMonitor()
+        removeOutsideClickMonitors()
     }
 
     private func removeEscapeMonitor() {
         guard let monitor = escapeMonitor else { return }
         NSEvent.removeMonitor(monitor)
         escapeMonitor = nil
+    }
+
+    private func removeOutsideClickMonitors() {
+        if let monitor = outsideClickLocalMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickLocalMonitor = nil
+        }
+        if let monitor = outsideClickGlobalMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickGlobalMonitor = nil
+        }
     }
 
     @objc private func quit() {

@@ -15,6 +15,11 @@ struct NoteView: View {
     /// re-take focus on every show rather than only on first appearance.
     let focusToken: Int
 
+    /// Whether outside clicks are ignored while the popover is open. Owned by
+    /// the delegate, not local `@State`, so it survives this view being
+    /// recreated on every open rather than resetting each time.
+    @ObservedObject var pinState: PinState
+
     var body: some View {
         Group {
             if showingSettings {
@@ -75,6 +80,13 @@ struct NoteView: View {
                 .help(engine.status.label)
 
                 Spacer()
+
+                Button {
+                    pinState.isPinned.toggle()
+                } label: {
+                    Image(systemName: pinState.isPinned ? "pin.fill" : "pin")
+                }
+                .help(pinState.isPinned ? "Unpin (click outside to close)" : "Pin (stay open when clicking outside)")
 
                 Button {
                     showingSettings = true
